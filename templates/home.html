@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Web Demo</title>
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+    <!-- jQuery library -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.2/jquery.min.js"></script>
+    <!-- Latest compiled JavaScript -->
+    <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+    <script>window.jQuery || document.write('<script src="{{  url_for('static', filename='jquery.js') }}">\x3C/script>')</script>
+    <script type="text/javascript">
+      $(function(){
+        $("input:radio[name='optradio']").bind('change', function(){
+          $.post('/radio_change', {
+            selected : $("input:radio[name='optradio']:checked").val()
+          }, function(data, status){
+          });
+        });
+      });
+    </script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="container-fluid">
+        <h1 class="text-center text-primary">Demo KLTN </h1>
+        <div class="row">
+          <div class="col-md-6">
+            <h3 class="text-center text-primary">Settings</h3> 
+            <h4> Models: </h4>
+            <div class="radio">
+              <label><input type="radio" name="optradio" value="1">GoogleNet</label>
+            </div>
+            <div class="radio">
+              <label><input type="radio" name="optradio" value="2">ALexNet</label>
+            </div>
+            <div class="radio">
+              <label><input type="radio" name="optradio" value="3">Sift+SVM</label>
+            </div>
+            <ul class="nav nav-tabs">
+              <li class="active"><a data-toggle="tab" href="#URL">URL</a></li>
+              <li><a data-toggle="tab" href="#UPLOAD">UPLOAD</a></li>
+            </ul>
+            <div class="tab-content">
+              <div id="URL" class="tab-pane fade in active">
+                <form id="imageurl" role="form" action="classify_url" method="get">
+                  <div class="form-group">
+                    <div class="input-group">
+                      <label for="classify-url">Cassifier URL:</label>
+                      <input type="text" class="form-control" name="imageurl" id="imageurl" placeholder="Enter Image's URL Here"></input>
+                      <div>
+                        <input type="submit" class="btn btn-primary" id=# value="Classify"></input>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </div>
+              <div id="UPLOAD" class="tab-pane fade">
+                <form id="imagefile" role="form" action="classify_upload" method="post" enctype="multipart/form-data">
+                  <div class="form-group">
+                    <div class="input-group">
+                      <label for="imagefile">Up load and image</label>
+                      <input type="file" name="imagefile" id="imagefile">
+                      <div>
+                        <input type="submit" class="btn btn-primary" id=# value="Classify"></input>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <h3 class="text-center text-primary">Results</h3>
+            {% if has_result %}
+            {% if not result[0] %}
+            <!-- we have error in the result. -->
+            <div class="alert alert-danger">{{ result[1] }} Did you provide a valid URL or a valid image file? </div>
+            {% else %}
+            <div class="media">
+              <img class="img-thumbnail" width="192" height=192 src={{ imagesrc }}>
+              <ul class="list-group">
+                {% for pred in result[2] %}
+                <li class="list-group-item">
+                <span class="badge"></span>
+                <h4 class="list-group-item-heading">
+                    <span>{{ pred[0] }}</span>
+                  </h4>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
