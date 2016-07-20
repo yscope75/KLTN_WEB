@@ -10,7 +10,10 @@
     <!-- Latest compiled JavaScript -->
     <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='owl.carousel.min.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='owl.carousel.js') }}"></script>
     <script>window.jQuery || document.write('<script src="{{  url_for('static', filename='jquery.js') }}">\x3C/script>')</script>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='main.css') }}">
     <script type="text/javascript">
       $(function(){
         $("input:radio[name='optradio']").bind('change', function(){
@@ -21,17 +24,91 @@
         });
       });
     </script>
+    <script type="text/javascript">
+      $(document).ready(function(){
+        $("#loading").css("display", "none");
+        $(document).ajaxStart(function(){
+          $('input:radio[name="optradio"]').prop("disabled",true);
+          $('input:submit').prop('disabled', true);
+          $("#loading").css("display", "block");
+        });
+        $(document).ajaxComplete(function(){
+          $('input:radio[name="optradio"]').prop("disabled", false);
+          $('input:submit').prop('disabled', false);
+          $("#loading").css("display", "none");
+        });
+        $('#imageurl').submit(function(event){
+          event.preventDefault();
+
+          $.ajax({
+            url: 'classify_url',
+            type: 'GET',
+            data: $(this).serialize(),
+            success: function(data) {
+              if(data){
+                $('#result').html($(data).find('#result'));
+              }
+            }
+          });
+        });
+      });
+    </script>
+    <script type="text/javascript">
+      $(document).ready(function(){
+        $("#loading").css("display", "none");
+        $(document).ajaxStart(function(){
+          $('input:radio[name="optradio"]').prop("disabled",true);
+          $('input:submit').prop('disabled', true);
+          $("#loading").css("display", "block");
+        });
+        $(document).ajaxComplete(function(){
+          $('input:radio[name="optradio"]').prop("disabled", false);
+          $('input:submit').prop('disabled', false);
+          $("#loading").css("display", "none");
+        });
+        $('#imagefile').submit(function(event){
+          event.preventDefault();
+          var form_data = new FormData($('#imagefile')[0]);
+          $.ajax({
+            url: 'classify_upload',
+            type: 'POST',
+            data: form_data,
+            contentType: false,
+            processData: false
+          }).success(function(data){
+            $('#result').html($(data).find('#result'));
+          });
+        });
+      });
+    </script>
+    <script type="text/javascript">
+      $(document).ready(function ($) {
+        $(".history-carousel").owlCarousel({
+          navigation : true,
+          pagination: false,
+          slideSpeed : 400,
+          stopOnHover: true,
+            autoPlay: 3000,
+            items : 4,
+            itemsDesktopSmall : [900,3],
+          itemsTablet: [600,2],
+          itemsMobile : [479, 1]
+        });
+      });
+    </script>
   </head>
   <body>
+    <div class="navbar navbar-inverse navbar-fixed-left">
+      <a class="navbar-brand" href="#">Image Classifier Demo</a>
+    </div>
     <div class="container">
       <div class="container-fluid">
-        <h1 class="text-center text-primary">Demo KLTN </h1>
         <div class="row">
           <div class="col-md-6">
-            <h3 class="text-center text-primary">Settings</h3> 
+            <h3 class="classic-title"><span>Settings</span></h3> 
             <h4> Models: </h4>
             <div class="radio">
-              <label><input type="radio" name="optradio" value="1">GoogleNet</label>
+              <label><input type="radio" name="optradio" value="1" checked="checked">GoogleNet</label>
             </div>
             <div class="radio">
               <label><input type="radio" name="optradio" value="2">ALexNet</label>
@@ -51,7 +128,7 @@
                       <label for="classify-url">Cassifier URL:</label>
                       <input type="text" class="form-control" name="imageurl" id="imageurl" placeholder="Enter Image's URL Here"></input>
                       <div>
-                        <input type="submit" class="btn btn-primary" id=# value="Classify"></input>
+                        <input type="submit" class="btn-system btn-large" id="submit" value="Classify"></input>
                       </div>
                     </div>
                   </div>
@@ -64,16 +141,19 @@
                       <label for="imagefile">Up load and image</label>
                       <input type="file" name="imagefile" id="imagefile">
                       <div>
-                        <input type="submit" class="btn btn-primary" id=# value="Classify"></input>
+                        <input type="submit" class="btn-system btn-large" id=# value="Classify"></input>
                       </div>
                     </div>
                   </div>
                 </form>
               </div>
             </div>
+            <div id="loading">
+              <h3>Processing ...</h3>
+            </div>
           </div>
-          <div class="col-md-6">
-            <h3 class="text-center text-primary">Results</h3>
+          <div class="col-md-6" id="result">
+            <h3 class="classic-title"><span>Results</span></h3>
             {% if has_result %}
             {% if not result[0] %}
             <!-- we have error in the result. -->
@@ -82,19 +162,56 @@
             <div class="media">
               <img class="img-thumbnail" width="192" height=192 src={{ imagesrc }}>
               <ul class="list-group">
-                {% for pred in result[2] %}
                 <li class="list-group-item">
                 <span class="badge"></span>
                 <h4 class="list-group-item-heading">
-                    <span>{{ pred[0] }}</span>
+                    <span>{{ result[2] }}</span>
                   </h4>
                 </li>
-                {% endfor %}
               </ul>
             </div>
             {% endif %}
             {% endif %}
           </div>
+        </div>
+        <div class="hr1 margin-top"></div>
+        <!-- <div class="history">
+          <h3 class="classic-title"><span>History</span></h3>
+          <div class="history-carousel touch-carousel owl-carousel owl-theme">
+            <div class="owl-wrapper-outer">
+              <div class="owl-wrapper">
+                {% for h in history %}
+                <div class="portfolio-item item">
+                  <div class="portfolio-border">
+                    <div class="portfolio-thumb">
+                      <a href={{ h[0] }}>
+                        <div class="thumb-overlay"><i class="fa fa-arrows-alt"></i></div>
+                        <img alt="" src={{ h[0] }} />
+                      </a>
+                    </div>
+                    <div class="portfolio-details">
+                      <a href="#">
+                        <h4>{{ h[1] }}</h4>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+              <div class="owl-controls clickable">
+                <div class="owl-buttons">
+                  <div class="owl-prev">
+                    <i class="fa fa-angle-left">
+                    </i>
+                  </div>
+                  <div class="owl-next">
+                    <i class="fa fa-angle-right">
+                    </i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div> -->
         </div>
       </div>
     </div>

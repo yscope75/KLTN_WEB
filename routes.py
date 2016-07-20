@@ -7,6 +7,7 @@ import traceback
 import cv2
 import urllib
 import cPickle
+import fetutil
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -18,6 +19,7 @@ from scipy.cluster.vq import *
 from werkzeug.utils import secure_filename
 from optparse import OptionParser
 from flask import send_from_directory
+from sklearn.cluster import MiniBatchKMeans, KMeans
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads') 
 ALLOWED_IMAGE_EXTENSTIONS = set(['jpg', 'bmp', 'png', 'jpeg', 'jpe'])
@@ -26,11 +28,16 @@ REPO_DIRNAME = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + '/..
 # create flask app object
 app = flask.Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
+dic = joblib.load('dics.pkl')
+labels = joblib.load('labels.pkl')
 # root url
 @app.route('/')
 def home():
-    return flask.render_template('home.html', has_result = False)
+    # get history images 
+    history = fetutil.get_history()
+    for h in history:
+        h[0] = str(flask.url_for('uploaded_file', filename=h[0]))
+    return flask.render_template('home.html', has_result = False, history=history)
 
 @app.route('/classify_url', methods=['GET'])
 def classify_url():
@@ -77,7 +84,7 @@ def classify_upload():
         if imageupload and allowed_image(imageupload.filename):
             imagename_ = secure_filename(imageupload.filename)
             imagename_ = str(datetime.datetime.now()).replace(' ', '_') + imagename_
-            filename = imagename_
+            app.imName = imagename_
             imagename = os.path.join(UPLOAD_FOLDER, imagename_) 
             imageupload.save(imagename) 
         if app.classifier == app.SVMClf:
@@ -95,7 +102,9 @@ def classify_upload():
         return flask.render_template('home.html', has_result=True, result=(False, str(traceback.format_exc()) ))
 
     result = app.classifier.classify(image)
-    return flask.render_template('home.html', has_result=True, result=result, imagesrc= str(flask.url_for('uploaded_file', filename=filename)))
+    if result[0]:
+        fetutil.save_features(app, result[2])
+    return flask.render_template('home.html', has_result=True, result=result, imagesrc= str(flask.url_for('uploaded_file', filename=app.imName)))
 
 @app.route('/radio_change', methods=['GET', 'POST'])
 def apply_change():
@@ -134,6 +143,7 @@ def start_from_terminal(app):
     opts, args = parser.parse_args()
     DeepClassifier.alex_args.update({'gpu_mode': opts.gpu})
     DeepClassifier.googlenet_args.update({'gpu_mode': opts.gpu})
+    app.imName = ''
     # Init classifier
     app.AlexClf = DeepClassifier(**DeepClassifier.alex_args)
     app.AlexClf.net.forward()
@@ -141,7 +151,7 @@ def start_from_terminal(app):
     app.LeNetClf.net.forward()
     app.SVMClf = SVMClassifier()
     app.classifier = app.LeNetClf
-    app.run()
+    app.run(debug=True)
 
 def check_model_args(model_args):
     for key, val in model_args.iteritems():
@@ -165,6 +175,8 @@ class DeepClassifier(object):
             '{}/data/ilsvrc12/synset_words.txt'.format(REPO_DIRNAME)),
         'bet_file': (
             '{}/data/ilsvrc12/imagenet.bet.pickle'.format(REPO_DIRNAME)),
+        'svm_trained': 'FC8_classifier_Scaler.pkl',
+        'name': 'Alex',
         'image_dim': 256,
         'raw_scale': 255.,
     }
@@ -181,14 +193,17 @@ class DeepClassifier(object):
             '{}/data/ilsvrc12/synset_words.txt'.format(REPO_DIRNAME)),
         'bet_file': (
             '{}/data/ilsvrc12/imagenet.bet.pickle'.format(REPO_DIRNAME)),
+        'svm_trained': 'CNN_GoogLeNet_classifier_Scaler.pkl',
+        'name': 'Google',
         'image_dim': 256,
         'raw_scale': 255.,
     }
 
     
     def __init__(self, model_def_file, pretrained_model_file, mean_file,
-                class_labels_file, bet_file, raw_scale, image_dim, gpu_mode):
-
+                class_labels_file, bet_file, raw_scale, image_dim, gpu_mode, svm_trained, name):
+        self.svm = svm_trained
+        self.name = name 
         if gpu_mode:
             caffe.set_mode_gpu()
         else:
@@ -200,43 +215,27 @@ class DeepClassifier(object):
             mean=np.load(mean_file).mean(1).mean(1),
             channel_swap=(2, 1, 0)
         )
-        with open(class_labels_file) as f:
-            labels_df = pd.DataFrame([
-                {
-                    'synset_id': l.strip().split(' ')[0],
-                    'name': ' '.join(l.strip().split(' ')[1:]).split(',')[0]
-                }
-                for l in f.readlines()
-            ])
-        self.labels = labels_df.sort('synset_id')['name'].values
-        self.bet = cPickle.load(open(bet_file))
-        self.bet['infogain'] -= np.array(self.bet['preferences']) * 0.1
+
     def classify(self, image):
         try:
-            scores = self.net.predict([image], oversample=True).flatten()
-            indices = (-scores).argsort()
-            predictions = self.labels[indices]
-            value = [
-                (p, '%.5f' % scores[i])
-                for i, p in zip(indices, predictions)
-            ]
-            expected_infogain = np.dot(
-                self.bet['probmat'], scores[self.bet['idmapping']])
-            expected_infogain *= self.bet['infogain']
-
-            # sort the scores
-            infogain_sort = expected_infogain.argsort()[::-1]
-            bet_result = [(self.bet['words'][v], '%.5f' % expected_infogain[v])
-                          for v in infogain_sort[:5]]
-
-            return (True, value, bet_result)
+            scores = self.net.predict([image], oversample=True)
+            if self.name ==                                                                                                                                                                                                      'Alex':
+                feature = self.net.blobs['fc8'].data[0]
+            else :
+                feature = self.net.blobs['loss3/classifier'].data[0]
+            SVM, stdSlr = joblib.load(self.svm)
+            im_feature = stdSlr.transform(feature)
+            index =  SVM.predict(im_feature)
+            predictions = labels[index[0]]
+            return (True, [(1,1)], dic[predictions])
         except Exception as e:
 
             return (False, 'Some thing went wrong when classifying !')
 class SVMClassifier(object):
     """docstring for SVMClassifier"""
     def __init__(self):
-        self.clf, self.classes_names, self.stdSlr, self.k, self.voc = joblib.load("bof_new.pkl")
+        self.kmean = joblib.load('k_means_8000.pkl')
+        self.SVM = joblib.load('SVM_8000_notTransform.pkl')
         self.fea_det = cv2.FeatureDetector_create("SIFT")
         self.des_ext = cv2.DescriptorExtractor_create("SIFT")
 
@@ -244,20 +243,15 @@ class SVMClassifier(object):
         try:
             kpts = self.fea_det.detect(image)
             kpts, des = self.des_ext.compute(image, kpts)
-            test_feature = np.zeros((1,self.k), "float32")
-            words, distance = vq(des, self.voc)
+            input_feature = np.zeros((1,self.kmean.n_clusters), "float32")
+            words = self.kmean.predict(des)
             for w in words:
-                test_feature[0][w] += 1
+                input_feature[0][w] += 1
 
-            # perform If-Idf vectorization
-            nbr_occurences = np.sum((test_feature > 0) * 1,  axis = 0)
-            idf = np.array(np.log(2.0 / (1.0*nbr_occurences + 1)), "float32")
-            # Scale the features
-            test_feature = self.stdSlr.transform(test_feature)
-
+            self.features = des
             # perform the predictions
-            prediction = [(self.classes_names[i], i) for i in self.clf.predict(test_feature) ]
-            return (True, [(1,1)], prediction)
+            predictions = self.SVM.predict(input_feature)
+            return (True, [(1,1)], dic[labels[predictions]])
         except Exception as e:
             return (False, 'Some thing went wrong when classifying with SVM !')
 
@@ -265,4 +259,6 @@ class SVMClassifier(object):
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
+    if not os.path.exists(fetutil.FEATURES_FOLDER):
+        os.makedirs(fetutil.FEATURES_FOLDER)
     start_from_terminal(app)
